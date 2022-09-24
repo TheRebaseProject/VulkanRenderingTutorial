@@ -2,14 +2,20 @@ package main;
 
 import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
 import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.glfw.GLFWVulkan.glfwCreateWindowSurface;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.NULL;
+import static org.lwjgl.vulkan.KHRSurface.vkDestroySurfaceKHR;
+import static org.lwjgl.vulkan.VK10.VK_NULL_HANDLE;
+import static org.lwjgl.vulkan.VK10.VK_SUCCESS;
 
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VkInstance;
 
 public class WindowManager {
 	/*
@@ -27,11 +33,24 @@ public class WindowManager {
 	 * private class variables
 	 */
 	private static boolean framebufferResized;
+	private static long surface;
 	private static long window;
 	
 	/*
 	 * public class methods
 	 */
+    public static void createSurface(VkInstance instance) {
+        try(MemoryStack stack = stackPush()) {
+            LongBuffer pSurface = stack.longs(VK_NULL_HANDLE);
+
+            if(VK_SUCCESS == glfwCreateWindowSurface(instance, window, null, pSurface)) {
+                surface = pSurface.get(0);
+            } else {
+                throw new RuntimeException("Failed to create window surface");
+            }
+        }
+    }
+    
 	public static void createWindow() {
 		GLFWErrorCallback.createPrint(System.err).set();
 		
@@ -61,6 +80,8 @@ public class WindowManager {
 	    
 	    framebufferResized = false;
 	}
+	
+	public static void destroySurface(VkInstance instance) {vkDestroySurfaceKHR(instance, surface, null);}
 	
 	public static void destroyWindow() {
 		glfwFreeCallbacks(window);
