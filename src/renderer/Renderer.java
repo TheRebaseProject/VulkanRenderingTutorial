@@ -6,6 +6,7 @@ import static org.lwjgl.vulkan.VK10.vkDeviceWaitIdle;
 
 import renderer.vulkan.Instance;
 import renderer.vulkan.LogicalDevice;
+import renderer.vulkan.MemoryAllocator;
 import renderer.vulkan.physicalDevice.PhysicalDevice;
 
 public class Renderer {
@@ -22,6 +23,7 @@ public class Renderer {
 	 */
 	private Instance instance;
 	private LogicalDevice logicalDevice;
+	private MemoryAllocator memoryAllocator;
 	private PhysicalDevice physicalDevice;
     
     /*
@@ -30,6 +32,7 @@ public class Renderer {
 	public Renderer() {
 		instance = new Instance();
 		logicalDevice = new LogicalDevice();
+		memoryAllocator = new MemoryAllocator();
 		physicalDevice = new PhysicalDevice();
 	}
 	
@@ -40,9 +43,11 @@ public class Renderer {
 		instance.create();
 		physicalDevice.selectPhysicalDevice(instance.getInstance());
 		logicalDevice.create(physicalDevice);
+		memoryAllocator.create(instance, physicalDevice, logicalDevice);
 	}
 	
 	public void destroy() {
+		memoryAllocator.destroy();
 		logicalDevice.destroy();
 		//no resources released by a PhysicalDevice
 		instance.destroy();
