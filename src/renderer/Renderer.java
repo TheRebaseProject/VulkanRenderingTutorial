@@ -8,6 +8,7 @@ import renderer.vulkan.Instance;
 import renderer.vulkan.LogicalDevice;
 import renderer.vulkan.MemoryAllocator;
 import renderer.vulkan.physicalDevice.PhysicalDevice;
+import renderer.vulkan.renderPass.RenderPass;
 
 public class Renderer {
 	/*
@@ -25,6 +26,7 @@ public class Renderer {
 	private LogicalDevice logicalDevice;
 	private MemoryAllocator memoryAllocator;
 	private PhysicalDevice physicalDevice;
+	private RenderPass renderPass;
     
     /*
      * constructors
@@ -34,6 +36,7 @@ public class Renderer {
 		logicalDevice = new LogicalDevice();
 		memoryAllocator = new MemoryAllocator();
 		physicalDevice = new PhysicalDevice();
+		renderPass = new RenderPass();
 	}
 	
 	/*
@@ -44,9 +47,11 @@ public class Renderer {
 		physicalDevice.selectPhysicalDevice(instance.getInstance());
 		logicalDevice.create(physicalDevice);
 		memoryAllocator.create(instance, physicalDevice, logicalDevice);
+		renderPass.create(logicalDevice);
 	}
 	
 	public void destroy() {
+		renderPass.destroy(logicalDevice);
 		memoryAllocator.destroy();
 		logicalDevice.destroy();
 		//no resources released by a PhysicalDevice
