@@ -1,0 +1,31 @@
+{
+  "build": "release",
+  "mode": "zip",
+  "selectedAddons": [
+    "joml"
+  ],
+  "platform": [
+    "macos",
+    "windows"
+  ],
+  "descriptions": true,
+  "compact": false,
+  "hardcoded": false,
+  "javadoc": true,
+  "includeJSON": true,
+  "source": true,
+  "osgi": false,
+  "language": "groovy",
+  "contents": [
+    "lwjgl",
+    "lwjgl-assimp",
+    "lwjgl-glfw",
+    "lwjgl-openal",
+    "lwjgl-shaderc",
+    "lwjgl-stb",
+    "lwjgl-vma",
+    "lwjgl-vulkan"
+  ],
+  "version": "3.3.1",
+  "versionLatest": "3.3.1"
+}
