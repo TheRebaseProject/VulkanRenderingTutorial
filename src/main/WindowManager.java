@@ -91,6 +91,7 @@ public class WindowManager {
 	}
 	
 	public static boolean framebufferResized() {return framebufferResized;}
+	public static long getSurface() {return surface;}
 	public static long getWindow() {return window;}
 	public static boolean windowShouldClose() {return glfwWindowShouldClose(window);}
 	
