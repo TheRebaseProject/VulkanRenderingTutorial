@@ -33,6 +33,7 @@ public class TutorialMain {
     		glfwPollEvents();
     	}
     	
+    	renderer.waitForDeviceIdle();
     	renderer.destroy();
 		WindowManager.destroyWindow();
 		System.exit(0);

@@ -2,8 +2,10 @@ package renderer;
 
 import static org.lwjgl.system.Configuration.DEBUG;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+import static org.lwjgl.vulkan.VK10.vkDeviceWaitIdle;
 
 import renderer.vulkan.Instance;
+import renderer.vulkan.LogicalDevice;
 import renderer.vulkan.physicalDevice.PhysicalDevice;
 
 public class Renderer {
@@ -19,6 +21,7 @@ public class Renderer {
 	 * private variables
 	 */
 	private Instance instance;
+	private LogicalDevice logicalDevice;
 	private PhysicalDevice physicalDevice;
     
     /*
@@ -26,6 +29,7 @@ public class Renderer {
      */
 	public Renderer() {
 		instance = new Instance();
+		logicalDevice = new LogicalDevice();
 		physicalDevice = new PhysicalDevice();
 	}
 	
@@ -35,10 +39,14 @@ public class Renderer {
 	public void create() {
 		instance.create();
 		physicalDevice.selectPhysicalDevice(instance.getInstance());
+		logicalDevice.create(physicalDevice);
 	}
 	
 	public void destroy() {
+		logicalDevice.destroy();
 		//no resources released by a PhysicalDevice
 		instance.destroy();
 	}
+	
+	public void waitForDeviceIdle() {vkDeviceWaitIdle(logicalDevice.device());}
 }
