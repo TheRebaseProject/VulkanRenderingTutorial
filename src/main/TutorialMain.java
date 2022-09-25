@@ -23,14 +23,18 @@ public class TutorialMain {
     }
     
     /*
-     * public methods
+     * private methods
      */
-    public void run() {
+    private void pollInputs() {
+    	glfwPollEvents();
+    }
+    
+    private void run() {
     	WindowManager.createWindow();
     	renderer.create();
     	
     	while(!WindowManager.windowShouldClose()) {
-    		glfwPollEvents();
+    		pollInputs();
     	}
     	
     	renderer.waitForDeviceIdle();

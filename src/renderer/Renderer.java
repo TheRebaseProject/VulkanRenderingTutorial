@@ -8,7 +8,7 @@ import renderer.vulkan.Instance;
 import renderer.vulkan.LogicalDevice;
 import renderer.vulkan.MemoryAllocator;
 import renderer.vulkan.physicalDevice.PhysicalDevice;
-import renderer.vulkan.renderPass.RenderPass;
+import renderer.vulkan.swapChain.SwapChain;
 
 public class Renderer {
 	/*
@@ -26,7 +26,7 @@ public class Renderer {
 	private LogicalDevice logicalDevice;
 	private MemoryAllocator memoryAllocator;
 	private PhysicalDevice physicalDevice;
-	private RenderPass renderPass;
+	private SwapChain swapChain;
     
     /*
      * constructors
@@ -36,7 +36,7 @@ public class Renderer {
 		logicalDevice = new LogicalDevice();
 		memoryAllocator = new MemoryAllocator();
 		physicalDevice = new PhysicalDevice();
-		renderPass = new RenderPass();
+		swapChain = new SwapChain();
 	}
 	
 	/*
@@ -47,11 +47,11 @@ public class Renderer {
 		physicalDevice.selectPhysicalDevice(instance.getInstance());
 		logicalDevice.create(physicalDevice);
 		memoryAllocator.create(instance, physicalDevice, logicalDevice);
-		renderPass.create(logicalDevice);
+		swapChain.create(physicalDevice, logicalDevice);
 	}
 	
 	public void destroy() {
-		renderPass.destroy(logicalDevice);
+		swapChain.destroy(logicalDevice);
 		memoryAllocator.destroy();
 		logicalDevice.destroy();
 		//no resources released by a PhysicalDevice
