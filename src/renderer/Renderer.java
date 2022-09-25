@@ -7,27 +7,25 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_ERROR_OUT_OF_DATE_KHR;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_SUBOPTIMAL_KHR;
-import static org.lwjgl.vulkan.VK10.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-import static org.lwjgl.vulkan.VK10.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-import static org.lwjgl.vulkan.VK10.VK_SUCCESS;
-import static org.lwjgl.vulkan.VK10.vkBeginCommandBuffer;
-import static org.lwjgl.vulkan.VK10.vkCmdEndRenderPass;
-import static org.lwjgl.vulkan.VK10.vkDeviceWaitIdle;
-import static org.lwjgl.vulkan.VK10.vkEndCommandBuffer;
+import static org.lwjgl.vulkan.VK10.*;
 
+import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
 
 import main.WindowManager;
+import renderer.model.Model;
 import renderer.vulkan.Instance;
 import renderer.vulkan.LogicalDevice;
 import renderer.vulkan.MemoryAllocator;
 import renderer.vulkan.descriptor.setLayouts.DescriptorSetLayout;
 import renderer.vulkan.descriptor.setLayouts.DescriptorSetLayoutSingleUniform;
 import renderer.vulkan.physicalDevice.PhysicalDevice;
+import renderer.vulkan.pipeline.Pipeline;
 import renderer.vulkan.pipeline.graphics.GraphicsPipeline;
 import renderer.vulkan.pipeline.graphics.uniformColor.GraphicsPipelineUniformColor;
 import renderer.vulkan.swapChain.SwapChain;
@@ -137,6 +135,14 @@ public class Renderer {
 		instance.destroy();
 	}
 	
+	public void drawUniformColor(long descriptorSet, Model model) {
+    	try(MemoryStack stack = stackPush()) {
+    		GraphicsPipelineUniformColor gp = (GraphicsPipelineUniformColor)graphicsPipelines[GP_UNIFORM_COLOR];
+            
+            addDrawCommands(stack.longs(descriptorSet), gp, null, model, 1);
+    	}
+	}
+	
     public void endRenderPass() {
     	int nextImageIndex = swapChain.getNextImageIndex();
     	VkCommandBuffer commandBuffer = swapChain.getCommandBuffers().get(nextImageIndex).getCommandBuffer();
@@ -146,6 +152,9 @@ public class Renderer {
 	
 	public DescriptorSetLayout getDescriptorSetLayout(byte dsl) {return descriptorSetLayouts[dsl];}
 	public LogicalDevice getLogicalDevice() {return logicalDevice;}
+	public long getMemoryAllocator() {return memoryAllocator.allocator();}
+	public int getNextImageIndex() {return swapChain.getNextImageIndex();}
+	public int getSwapChainImageCount() {return swapChain.getImages().size();}
 	
     public void recreateSwapChain() {
     	try(MemoryStack stack = stackPush()) {
@@ -194,6 +203,28 @@ public class Renderer {
 	/*
 	 * private methods
 	 */
+    private void addDrawCommands(LongBuffer descriptorSets, Pipeline gp, ByteBuffer pc, Model model, int instanceCount) {
+    	try(MemoryStack stack = stackPush()) {
+        	int nextImageIndex = swapChain.getNextImageIndex();
+        	VkCommandBuffer commandBuffer = swapChain.getCommandBuffers().get(nextImageIndex).getCommandBuffer();
+            
+        	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gp.getPipeline());
+            
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gp.getPipelineLayout().getPipelineLayout(), 0, descriptorSets, null);
+            
+            if(null != pc) {
+            	vkCmdPushConstants(commandBuffer, gp.getPipelineLayout().getPipelineLayout(), gp.getPushConstantStages(), 0, pc);	
+            }            
+            
+            LongBuffer vertexBuffers = stack.longs(model.getVertexData().vertexBuffer());
+            LongBuffer offsets = stack.longs(0);
+            vkCmdBindVertexBuffers(commandBuffer, 0, vertexBuffers, offsets);
+            vkCmdBindIndexBuffer(commandBuffer, model.getVertexData().indexBuffer(), 0, model.getVertexData().indexType());
+            
+            vkCmdDrawIndexed(commandBuffer, model.getVertexData().indicesCount(), instanceCount, 0, 0, 0);
+    	}
+    }
+    
     private void createDescriptorSetLayouts() {
     	for(byte i = 0; i < DESCRIPTOR_SET_LAYOUT_COUNT; i++) {
     		descriptorSetLayouts[i].create(logicalDevice);

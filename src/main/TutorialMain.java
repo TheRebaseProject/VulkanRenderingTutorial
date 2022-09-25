@@ -1,7 +1,6 @@
 package main;
 
 import static org.lwjgl.glfw.GLFW.glfwPollEvents;
-import static org.lwjgl.vulkan.KHRSwapchain.VK_ERROR_OUT_OF_DATE_KHR;
 
 import renderer.Renderer;
 
@@ -14,12 +13,14 @@ public class TutorialMain {
     /*
      * private variables
      */
+    private Application application;
     private Renderer renderer;
     
     /*
      * constructors
      */
     public TutorialMain() {
+    	application = new Application();
     	renderer = new Renderer();
     }
     
@@ -31,30 +32,13 @@ public class TutorialMain {
     }
     
     private void render() {
-    	int vkResult = renderer.acquireNextSwapChainImage();
-    	
-    	if(VK_ERROR_OUT_OF_DATE_KHR == vkResult) {
-			renderer.recreateSwapChain();
-			//recreateSwapChainAssets
-		}
-    	
-    	//prepareDrawAssets
-    	
-    	renderer.beginCommandBuffer();
-    	renderer.beginRenderPass();
-    	
-    	//draw
-        
-        renderer.endRenderPass();
-    	
-    	if(renderer.submit()) {
-    		//recreateSwapChainAssets
-    	}
+        application.render(renderer);
     }
     
     private void run() {
     	WindowManager.createWindow();
     	renderer.create();
+    	application.init(renderer);
     	
     	while(!WindowManager.windowShouldClose()) {
     		pollInputs();
@@ -62,6 +46,7 @@ public class TutorialMain {
     	}
     	
     	renderer.waitForDeviceIdle();
+    	application.deinit(renderer);
     	renderer.destroy();
 		WindowManager.destroyWindow();
 		System.exit(0);
