@@ -1,4 +1,4 @@
-package renderer.vulkan.descriptor;
+package renderer.vulkan.descriptor.setLayouts;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
