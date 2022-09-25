@@ -8,9 +8,16 @@ import java.nio.LongBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkAttachmentDescription;
 import org.lwjgl.vulkan.VkAttachmentReference;
+import org.lwjgl.vulkan.VkClearValue;
+import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkExtent2D;
+import org.lwjgl.vulkan.VkOffset2D;
+import org.lwjgl.vulkan.VkRect2D;
+import org.lwjgl.vulkan.VkRenderPassBeginInfo;
 import org.lwjgl.vulkan.VkRenderPassCreateInfo;
 import org.lwjgl.vulkan.VkSubpassDependency;
 import org.lwjgl.vulkan.VkSubpassDescription;
+import org.lwjgl.vulkan.VkViewport;
 
 import renderer.vulkan.LogicalDevice;
 
@@ -32,6 +39,42 @@ public class RenderPass {
 	/*
 	 * public methods
 	 */
+	public void beginRenderPass(int height, int width, long framebuffer, VkCommandBuffer commandBuffer) {
+		try(MemoryStack stack = stackPush()) {
+	    	VkRenderPassBeginInfo renderPassBeginInfo = VkRenderPassBeginInfo.calloc(stack);
+	        VkRect2D renderArea = VkRect2D.calloc(stack);
+	        VkExtent2D extent = VkExtent2D.calloc();
+	        VkViewport.Buffer viewport = VkViewport.calloc(1, stack);
+	        VkRect2D.Buffer scissor = VkRect2D.calloc(1, stack);
+	        
+	        extent.height(height);
+	        extent.width(width);
+	        
+	        renderArea.offset(VkOffset2D.calloc(stack).set(0, 0));
+	        renderArea.extent(extent);
+	    	
+	        renderPassBeginInfo.sType(VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO);
+	        renderPassBeginInfo.renderPass(renderPass);
+	        renderPassBeginInfo.renderArea(renderArea);
+	        renderPassBeginInfo.pClearValues(setClearValues(stack));
+	        renderPassBeginInfo.framebuffer(framebuffer);
+	        
+	        viewport.x(0.0f);
+	        viewport.y(0.0f);
+	        viewport.width(extent.width());
+	        viewport.height(extent.height());
+	        viewport.minDepth(0.0f);
+	        viewport.maxDepth(1.0f);
+	        
+	        scissor.offset(VkOffset2D.calloc(stack).set(0, 0));
+	        scissor.extent(extent);
+	        
+	        vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);            
+	        vkCmdSetViewport(commandBuffer, 0, viewport);
+	        vkCmdSetScissor(commandBuffer, 0, scissor);		
+		}
+	}
+	
     public void create(LogicalDevice logicalDevice) {
         try(MemoryStack stack = stackPush()) {
             VkAttachmentDescription.Buffer attachments;
@@ -86,6 +129,14 @@ public class RenderPass {
 		attachmentRefs.layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         
         return attachmentRefs;
+	}
+	
+	protected VkClearValue.Buffer setClearValues(MemoryStack stack) {
+		VkClearValue.Buffer clearValues = VkClearValue.calloc(1, stack);
+		
+		clearValues.color().float32(stack.floats(0.0f, 0.0f, 0.0f, 1.0f));
+		
+		return clearValues;
 	}
 	
 	protected VkSubpassDependency.Buffer setDependencies(MemoryStack stack) {

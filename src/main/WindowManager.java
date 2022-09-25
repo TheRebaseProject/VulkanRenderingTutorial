@@ -39,6 +39,8 @@ public class WindowManager {
 	/*
 	 * public class methods
 	 */
+	public static void acknowledgeResize() {framebufferResized = false;}
+	
     public static void createSurface(VkInstance instance) {
         try(MemoryStack stack = stackPush()) {
             LongBuffer pSurface = stack.longs(VK_NULL_HANDLE);

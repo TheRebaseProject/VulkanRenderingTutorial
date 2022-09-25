@@ -1,9 +1,27 @@
 package renderer;
 
+import static org.lwjgl.glfw.GLFW.glfwGetFramebufferSize;
+import static org.lwjgl.glfw.GLFW.glfwWaitEvents;
 import static org.lwjgl.system.Configuration.DEBUG;
+import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.vulkan.KHRSwapchain.VK_ERROR_OUT_OF_DATE_KHR;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+import static org.lwjgl.vulkan.KHRSwapchain.VK_SUBOPTIMAL_KHR;
+import static org.lwjgl.vulkan.VK10.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+import static org.lwjgl.vulkan.VK10.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+import static org.lwjgl.vulkan.VK10.VK_SUCCESS;
+import static org.lwjgl.vulkan.VK10.vkBeginCommandBuffer;
+import static org.lwjgl.vulkan.VK10.vkCmdEndRenderPass;
 import static org.lwjgl.vulkan.VK10.vkDeviceWaitIdle;
+import static org.lwjgl.vulkan.VK10.vkEndCommandBuffer;
 
+import java.nio.IntBuffer;
+
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
+
+import main.WindowManager;
 import renderer.vulkan.Instance;
 import renderer.vulkan.LogicalDevice;
 import renderer.vulkan.MemoryAllocator;
@@ -62,6 +80,41 @@ public class Renderer {
 	/*
 	 * public methods
 	 */
+	public int acquireNextSwapChainImage() {
+		int vkResult = swapChain.acquireNextImage(logicalDevice);
+		
+		if(VK_SUCCESS != vkResult && VK_ERROR_OUT_OF_DATE_KHR != vkResult) {
+			throw new RuntimeException("Failed to acquire next image in swap chain");
+		}
+		
+		return vkResult;
+	}
+	
+    public void beginCommandBuffer() {
+    	try(MemoryStack stack = stackPush()) {
+			int nextImageIndex = swapChain.getNextImageIndex();
+			VkCommandBufferBeginInfo beginInfo = VkCommandBufferBeginInfo.calloc(stack);    			
+            VkCommandBuffer commandBuffer = swapChain.getCommandBuffers().get(nextImageIndex).getCommandBuffer();
+            
+            beginInfo.sType(VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO);
+            beginInfo.flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+            if(VK_SUCCESS != vkBeginCommandBuffer(commandBuffer, beginInfo)) {
+                throw new RuntimeException("Failed to begin command buffer");
+            }
+    	}
+    }
+    
+    public void beginRenderPass() {
+    	int nextImageIndex = swapChain.getNextImageIndex();
+    	VkCommandBuffer commandBuffer = swapChain.getCommandBuffers().get(nextImageIndex).getCommandBuffer();
+    	
+	    swapChain.getRenderPass().beginRenderPass(swapChain.getImageExtent().height(),
+	    		swapChain.getImageExtent().width(),
+	    		swapChain.getFramebuffers().get(nextImageIndex).framebuffer(),
+	    		commandBuffer);
+    }
+	
 	public void create() {
 		instance.create();
 		physicalDevice.selectPhysicalDevice(instance.getInstance());
@@ -70,15 +123,11 @@ public class Renderer {
 		
 		createDescriptorSetLayouts();
 		
-		swapChain.create(physicalDevice, logicalDevice);
-		
-		createGraphicsPipelines();
+        createSwapChainObjects();
 	}
 	
 	public void destroy() {
-		destroyGraphicsPipelines();
-		
-		swapChain.destroy(logicalDevice);
+		destroySwapChainObjects();
 		
 		destroyDescriptorSetLayouts();
 		
@@ -88,8 +137,58 @@ public class Renderer {
 		instance.destroy();
 	}
 	
+    public void endRenderPass() {
+    	int nextImageIndex = swapChain.getNextImageIndex();
+    	VkCommandBuffer commandBuffer = swapChain.getCommandBuffers().get(nextImageIndex).getCommandBuffer();
+    	
+        vkCmdEndRenderPass(commandBuffer);
+    }
+	
 	public DescriptorSetLayout getDescriptorSetLayout(byte dsl) {return descriptorSetLayouts[dsl];}
 	public LogicalDevice getLogicalDevice() {return logicalDevice;}
+	
+    public void recreateSwapChain() {
+    	try(MemoryStack stack = stackPush()) {
+            IntBuffer width = stack.ints(0);
+            IntBuffer height = stack.ints(0);
+
+            while(width.get(0) == 0 && height.get(0) == 0) {
+                glfwGetFramebufferSize(WindowManager.getWindow(), width, height);
+                glfwWaitEvents();
+            }
+            
+            waitForDeviceIdle();
+            destroySwapChainObjects();
+            createSwapChainObjects();
+        }
+    }
+    
+    public boolean submit() {
+    	boolean recreateSwapChain = false;
+    	int nextImageIndex = swapChain.getNextImageIndex();
+    	VkCommandBuffer commandBuffer = swapChain.getCommandBuffers().get(nextImageIndex).getCommandBuffer();
+
+        if(VK_SUCCESS == vkEndCommandBuffer(commandBuffer)) {        	
+        	if(VK_SUCCESS == swapChain.submitDrawCommand(logicalDevice, commandBuffer)) {
+            	int vkResult = swapChain.present(logicalDevice);
+
+                if(VK_ERROR_OUT_OF_DATE_KHR == vkResult || VK_SUBOPTIMAL_KHR == vkResult || WindowManager.framebufferResized()) {
+                    WindowManager.acknowledgeResize();
+                    recreateSwapChain();
+                    recreateSwapChain = true;
+                } else if(VK_SUCCESS != vkResult) {
+                    throw new RuntimeException("Failed to present swap chain image");
+                }
+        	} else {
+        		throw new RuntimeException("Failed to submit command buffer");
+        	}
+        } else {
+            throw new RuntimeException("Failed to end command buffer");
+        }
+        
+        return recreateSwapChain;
+    }
+    
 	public void waitForDeviceIdle() {vkDeviceWaitIdle(logicalDevice.device());}
 	
 	/*
@@ -106,6 +205,12 @@ public class Renderer {
 		graphicsPipelines[GP_UNIFORM_COLOR].create(this, swapChain.getRenderPass());
 	}
     
+    private void createSwapChainObjects() {
+		swapChain.create(physicalDevice, logicalDevice);
+		
+		createGraphicsPipelines();
+    }
+    
     private void destroyDescriptorSetLayouts() {
     	for(byte i = 0; i < DESCRIPTOR_SET_LAYOUT_COUNT; i++) {
     		descriptorSetLayouts[i].destroy(logicalDevice);
@@ -116,5 +221,11 @@ public class Renderer {
     	for(byte i = 0; i < graphicsPipelines.length; i++) {
 		    graphicsPipelines[i].destroy(logicalDevice);
 		}
+    }
+    
+    private void destroySwapChainObjects() {
+		destroyGraphicsPipelines();
+		
+		swapChain.destroy(logicalDevice);
     }
 }
