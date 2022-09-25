@@ -12,11 +12,6 @@ import renderer.vulkan.pipeline.ShaderSPIRV;
 import renderer.vulkan.pipeline.ShaderStages;
 
 public abstract class ShaderStagesGraphics extends ShaderStages {
-	/*
-	 * protected class constants
-	 */
-	protected static final String SHADER_PATH_VERTEX = SHADER_PATH_BASE + "graphics/texture2d/texture2d.vert";
-	
     /*
      * private class constants
      */

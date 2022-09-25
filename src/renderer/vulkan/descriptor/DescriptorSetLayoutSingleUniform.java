@@ -28,7 +28,7 @@ public class DescriptorSetLayoutSingleUniform extends DescriptorSetLayout {
 	        uboLayoutBinding.descriptorCount(1);
 	        uboLayoutBinding.descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	        uboLayoutBinding.pImmutableSamplers(null);
-	        uboLayoutBinding.stageFlags(VK_SHADER_STAGE_VERTEX_BIT);
+	        uboLayoutBinding.stageFlags(VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	        super.create(logicalDevice, bindings);	
 		}
