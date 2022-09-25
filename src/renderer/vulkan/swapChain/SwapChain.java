@@ -10,10 +10,17 @@ import static org.lwjgl.vulkan.VK10.*;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkExtent2D;
+import org.lwjgl.vulkan.VkFenceCreateInfo;
+import org.lwjgl.vulkan.VkPresentInfoKHR;
+import org.lwjgl.vulkan.VkSemaphoreCreateInfo;
+import org.lwjgl.vulkan.VkSubmitInfo;
 import org.lwjgl.vulkan.VkSurfaceCapabilitiesKHR;
 import org.lwjgl.vulkan.VkSurfaceFormatKHR;
 import org.lwjgl.vulkan.VkSwapchainCreateInfoKHR;
@@ -33,7 +40,9 @@ public class SwapChain {
 	/*
 	 * private class constants
 	 */
+    private static final int MAX_FRAMES_IN_FLIGHT = 2;
     private static final int UINT32_MAX = 0xFFFFFFFF;
+    private static final long UINT64_MAX = 0xFFFFFFFFFFFFFFFFL;
     
 	/*
 	 * private variables
@@ -44,7 +53,11 @@ public class SwapChain {
     private VkExtent2D imageExtent;
 	private int imageFormat;
     private List<Long> images;
+    private Map<Integer, Frame> imagesInFlight;
 	private List<ImageView> imageViews;
+	private int inFlightFrameIndex;
+	private List<Frame> inFlightFrames;
+	private int nextImageIndex;
 	private RenderPassPresentation renderPassPresentation;
 	private long swapChain;
 	
@@ -58,14 +71,43 @@ public class SwapChain {
 		imageExtent = null;
 		imageFormat = 0;
 		images = new ArrayList<>();
+		imagesInFlight = null;
 		imageViews = new ArrayList<>();
+		inFlightFrameIndex = 0;
+		inFlightFrames = null;
+		nextImageIndex = -1;
 		renderPassPresentation = new RenderPassPresentation();
-		swapChain = VK_NULL_HANDLE;
+		swapChain = VK_NULL_HANDLE;		
 	}
 	
 	/*
 	 * public methods
-	 */	
+	 */
+	public int acquireNextImage(LogicalDevice logicalDevice) {
+		try(MemoryStack stack = stackPush()) {
+			IntBuffer pImageIndex = stack.mallocInt(1);
+			Frame nextFrame = inFlightFrames.get(inFlightFrameIndex);
+			int vkResult = VK_SUCCESS;
+			
+	        vkWaitForFences(logicalDevice.device(), nextFrame.pFence(), true, UINT64_MAX);
+
+	        vkResult = vkAcquireNextImageKHR(logicalDevice.device(),
+	        		swapChain,
+	        		UINT64_MAX,
+	        		nextFrame.imageAvailableSemaphore(),
+	        		VK_NULL_HANDLE,
+	        		pImageIndex);
+	        
+	        if(VK_SUCCESS == vkResult) {
+	        	nextImageIndex = pImageIndex.get(0);
+	        } else {
+	        	throw new RuntimeException("Failed to acquire next image from swap chain");
+	        }
+	        
+	        return vkResult;
+		}
+	}
+	
 	public void create(PhysicalDevice physicalDevice, LogicalDevice logicalDevice) {
         try(MemoryStack stack = stackPush()) {
         	long surface = WindowManager.getSurface();
@@ -125,6 +167,7 @@ public class SwapChain {
                     createFramebuffers(logicalDevice);
                     commandPool.create(physicalDevice, logicalDevice, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
                     allocateCommandBuffers(logicalDevice);
+                    createSyncObjects(logicalDevice);
                 } else {
                 	throw new RuntimeException("Failed to get swap chain image count");
                 }
@@ -135,6 +178,7 @@ public class SwapChain {
     }
     
     public void destroy(LogicalDevice logicalDevice) {
+    	destroySyncObjects(logicalDevice);
         destroyFramebuffers(logicalDevice);
         freeCommandBuffers(logicalDevice);
         commandPool.destroy(logicalDevice);
@@ -149,8 +193,61 @@ public class SwapChain {
     public VkExtent2D getImageExtent() {return imageExtent;}
     public int getImageFormat() {return imageFormat;}
     public List<Long> getImages() {return images;}
+    public int getNextImageIndex() {return nextImageIndex;}
     public RenderPassPresentation getRenderPass() {return renderPassPresentation;}
 	public long getSwapChain() {return swapChain;}
+    
+    public int present(LogicalDevice logicalDevice) {
+    	int result = VK_ERROR_DEVICE_LOST;
+    	
+    	try(MemoryStack stack = stackPush()) {
+    		Frame currentFrame = inFlightFrames.get(inFlightFrameIndex);
+            VkPresentInfoKHR presentInfo = VkPresentInfoKHR.calloc(stack);
+            IntBuffer pImageIndex = stack.ints(nextImageIndex);
+            
+            presentInfo.sType(VK_STRUCTURE_TYPE_PRESENT_INFO_KHR);
+            presentInfo.pWaitSemaphores(currentFrame.pRenderFinishedSemaphore());
+            presentInfo.swapchainCount(1);
+            presentInfo.pSwapchains(stack.longs(swapChain));
+            presentInfo.pImageIndices(pImageIndex);
+
+            result = vkQueuePresentKHR(logicalDevice.getPresentQueue(), presentInfo);
+    	}
+    	
+    	if(VK_SUCCESS == result || VK_ERROR_OUT_OF_DATE_KHR == result || VK_SUBOPTIMAL_KHR == result) {
+    		inFlightFrameIndex = (inFlightFrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
+    	}
+        
+    	return result;
+    }
+    
+    public int submitDrawCommand(LogicalDevice logicalDevice, VkCommandBuffer commandBuffer) {
+    	int result = VK_ERROR_DEVICE_LOST;
+    	
+    	try(MemoryStack stack = stackPush()) {
+    		Frame currentFrame = inFlightFrames.get(inFlightFrameIndex);
+    		VkSubmitInfo submitInfo = VkSubmitInfo.calloc(stack);
+    		
+            if(imagesInFlight.containsKey(nextImageIndex)) {
+                vkWaitForFences(logicalDevice.device(), imagesInFlight.get(nextImageIndex).fence(), true, UINT64_MAX);
+            }
+
+            imagesInFlight.put(nextImageIndex, currentFrame);
+
+            submitInfo.sType(VK_STRUCTURE_TYPE_SUBMIT_INFO);
+            submitInfo.waitSemaphoreCount(1);
+            submitInfo.pWaitSemaphores(currentFrame.pImageAvailableSemaphore());
+            submitInfo.pWaitDstStageMask(stack.ints(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT));
+            submitInfo.pSignalSemaphores(currentFrame.pRenderFinishedSemaphore());
+            submitInfo.pCommandBuffers(stack.pointers(commandBuffer));
+
+            vkResetFences(logicalDevice.device(), currentFrame.pFence());
+
+            result = vkQueueSubmit(logicalDevice.getGraphicsQueue(), submitInfo, currentFrame.fence());
+    	}
+    	
+    	return result;
+    }
 	
 	/*
 	 * private methods
@@ -232,6 +329,34 @@ public class SwapChain {
         }
     }
     
+    private void createSyncObjects(LogicalDevice logicalDevice) {
+        inFlightFrames = new ArrayList<>(MAX_FRAMES_IN_FLIGHT);
+        imagesInFlight = new HashMap<>(images.size());
+
+        try(MemoryStack stack = stackPush()) {
+            VkSemaphoreCreateInfo semaphoreInfo = VkSemaphoreCreateInfo.calloc(stack);
+            VkFenceCreateInfo fenceInfo = VkFenceCreateInfo.calloc(stack);
+            LongBuffer pImageAvailableSemaphore = stack.mallocLong(1);
+            LongBuffer pRenderFinishedSemaphore = stack.mallocLong(1);
+            LongBuffer pFence = stack.mallocLong(1);
+            
+            semaphoreInfo.sType(VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO);
+
+            fenceInfo.sType(VK_STRUCTURE_TYPE_FENCE_CREATE_INFO);
+            fenceInfo.flags(VK_FENCE_CREATE_SIGNALED_BIT);
+
+            for(int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                if(VK_SUCCESS!= vkCreateSemaphore(logicalDevice.device(), semaphoreInfo, null, pImageAvailableSemaphore) ||
+                		VK_SUCCESS != vkCreateSemaphore(logicalDevice.device(), semaphoreInfo, null, pRenderFinishedSemaphore) ||
+                		VK_SUCCESS != vkCreateFence(logicalDevice.device(), fenceInfo, null, pFence)) {
+                    throw new RuntimeException("Failed to create synchronization objects for the frame " + i);
+                }
+
+                inFlightFrames.add(new Frame(pImageAvailableSemaphore.get(0), pRenderFinishedSemaphore.get(0), pFence.get(0)));
+            }
+        }
+    }
+    
     private void freeCommandBuffers(LogicalDevice logicalDevice) {
         commandBuffers.forEach(commandBuffer -> commandBuffer.freeCommandBuffer(logicalDevice));
         commandBuffers.clear();
@@ -246,4 +371,6 @@ public class SwapChain {
         imageViews.forEach(imageView -> imageView.destroy(logicalDevice));
         imageViews.clear();
     }
+    
+    private void destroySyncObjects(LogicalDevice logicalDevice) {for(Frame frame : inFlightFrames) {frame.destroy(logicalDevice);}}
 }
