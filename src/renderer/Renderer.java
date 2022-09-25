@@ -58,5 +58,6 @@ public class Renderer {
 		instance.destroy();
 	}
 	
+	public LogicalDevice getLogicalDevice() {return logicalDevice;}
 	public void waitForDeviceIdle() {vkDeviceWaitIdle(logicalDevice.device());}
 }
